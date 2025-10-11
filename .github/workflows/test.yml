@@ -1,0 +1,32 @@
+name: Lua CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1 and luarocks
+        run: |
+          sudo apt-get update -y
+          # install Lua 5.1 and luarocks (targets Lua 5.1)
+          sudo apt-get install -y lua5.1 luarocks
+      - name: Install busted (apt)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y lua-busted
+      - name: Run tests
+        run: |
+          # Ensure Lua can find modules in the `lua/` directory and project root
+          export LUA_PATH="./lua/?.lua;./?.lua;/usr/local/share/lua/5.1/?.lua;;"
+          echo "Using LUA_PATH=$LUA_PATH"
+          echo "---- repo files ----"
+          ls -la
+          echo "---- lua dir ----"
+          ls -la lua || true
+          busted
