@@ -406,6 +406,10 @@ return {
   new = AESCipher.new,        -- legacy: default to AES-256
   new_256 = AESCipher.new,
   new_128 = AES128Cipher.new,
+  -- expose raw block encryptor for AES-128 (pure-Lua use)
+  cipher_block_128 = cipher_block_128,
+  -- expose expand_key_128 to allow raw-key block encryption
+  expand_key_128_raw = expand_key_128,
   pkcs7_pad = pkcs7_pad,
   pkcs7_unpad = pkcs7_unpad,
 }
