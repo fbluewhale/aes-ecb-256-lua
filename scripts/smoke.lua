@@ -1,5 +1,5 @@
 
-local AESCipher = require("lua.aes_ecb")
+local aes = require("lua.aes_ecb")
 
 -- generate a random 32-byte key and Base64-encode it
 math.randomseed(os.time() + (os.clock() * 1000000))
@@ -32,21 +32,34 @@ local function encode_b64(bin)
   return table.concat(out)
 end
 
-local key_raw = random_bytes(32)
-local key_b64 = encode_b64(key_raw)
-print("using random Base64 key:", key_b64)
+print("=== AES-256-ECB ===")
+local key256_raw = random_bytes(32)
+local key256_b64 = encode_b64(key256_raw)
+print("Random Base64 key (256-bit):", key256_b64)
 
-local inst = AESCipher.new(key_b64)
-local pt = "hello smoke test"
-local ct = inst:encrypt(pt)
-local dt, err = inst:decrypt(ct)
-if not dt then
-  io.stderr:write("decrypt error: ", tostring(err), "\n")
-end
+local inst256 = aes.AES256.new(key256_b64)
+local pt256 = "hello smoke test 256"
+local ct256 = inst256:encrypt(pt256)
+local dt256 = inst256:decrypt(ct256)
 
-print("plaintext:", pt)
-print("ciphertext:", ct)
-print("decrypted:", dt)
-print("roundtrip ok:", dt == pt)
+print("plaintext:", pt256)
+print("ciphertext:", ct256)
+print("decrypted:", dt256)
+print("roundtrip ok:", dt256 == pt256)
 
-os.exit(dt == pt and 0 or 1)
+print("\n=== AES-128-ECB ===")
+local key128_raw = random_bytes(16)
+local key128_b64 = encode_b64(key128_raw)
+print("Random Base64 key (128-bit):", key128_b64)
+
+local inst128 = aes.AES128.new(key128_b64)
+local pt128 = "hello smoke test 128"
+local ct128 = inst128:encrypt(pt128)
+local dt128 = inst128:decrypt(ct128)
+
+print("plaintext:", pt128)
+print("ciphertext:", ct128)
+print("decrypted:", dt128)
+print("roundtrip ok:", dt128 == pt128)
+
+os.exit((dt256 == pt256 and dt128 == pt128) and 0 or 1)

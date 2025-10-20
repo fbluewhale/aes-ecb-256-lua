@@ -108,7 +108,7 @@ local function rotword(w)
   return bor32(lshift32(w,8), rshift32(w,24))
 end
 
-local function expand_key(key32)  -- key32: 32 raw bytes
+local function expand_key(key32)  -- key32: 32 raw bytes (AES-256: 60 words)
   local w = {}
   for i=0,7 do
     local b1,b2,b3,b4 = key32:byte(4*i+1,4*i+4)
@@ -122,6 +122,22 @@ local function expand_key(key32)  -- key32: 32 raw bytes
       tmp = subword(tmp)
     end
     w[i] = xor32(w[i-8], tmp)
+  end
+  return w
+end
+
+local function expand_key_128(key16)  -- key16: 16 raw bytes (AES-128: 44 words)
+  local w = {}
+  for i=0,3 do
+    local b1,b2,b3,b4 = key16:byte(4*i+1,4*i+4)
+    w[i] = bytes_to_word(b1,b2,b3,b4)
+  end
+  for i=4,43 do
+    local tmp = w[i-1]
+    if i % 4 == 0 then
+      tmp = xor32(subword(rotword(tmp)), Rcon[math.floor(i/4)])
+    end
+    w[i] = xor32(w[i-4], tmp)
   end
   return w
 end
@@ -204,6 +220,29 @@ local function inv_cipher_block(inp,w)
   local s={inp:byte(1,16)}
   add_round_key(s,w,14)
   for r=13,1,-1 do
+    shift_rows(s,true); sub_bytes(s,invS); add_round_key(s,w,r)
+    mix_columns(s,true)
+  end
+  shift_rows(s,true); sub_bytes(s,invS); add_round_key(s,w,0)
+  return string.char(unpack(s))
+end
+
+-- AES-128 cipher functions (10 rounds)
+local function cipher_block_128(inp, w)
+  local s={inp:byte(1,16)}
+  add_round_key(s,w,0)
+  for r=1,9 do
+    sub_bytes(s,S); shift_rows(s,false); mix_columns(s,false)
+    add_round_key(s,w,r)
+  end
+  sub_bytes(s,S); shift_rows(s,false); add_round_key(s,w,10)
+  return string.char(unpack(s))
+end
+
+local function inv_cipher_block_128(inp,w)
+  local s={inp:byte(1,16)}
+  add_round_key(s,w,10)
+  for r=9,1,-1 do
     shift_rows(s,true); sub_bytes(s,invS); add_round_key(s,w,r)
     mix_columns(s,true)
   end
@@ -312,4 +351,61 @@ end
 AESCipher.pkcs7_pad = pkcs7_pad
 AESCipher.pkcs7_unpad = pkcs7_unpad
 
-return AESCipher
+------------------------------------------------------------------------
+-- section 6b : AES-128-ECB (10 rounds, 16-byte key) ------------------
+------------------------------------------------------------------------
+local AES128Cipher = {}; AES128Cipher.__index = AES128Cipher
+
+local function normalize_key_b64_128(b64)
+  local raw = decode_b64(b64 or "")
+  if #raw < 16 then
+    raw = raw .. string.rep("\0", 16 - #raw)     -- right-pad with NULs
+  elseif #raw > 16 then
+    raw = raw:sub(1,16)                          -- truncate to 16 bytes
+  end
+  return raw
+end
+
+function AES128Cipher.new(key_b64)
+  -- Accept a Base64-encoded key (or nil). Normalize to 16 raw bytes for AES-128.
+  local key16 = normalize_key_b64_128(key_b64 or FIXED_KEY_B64)
+  local self = setmetatable({}, AES128Cipher)
+  self._w = expand_key_128(key16)                -- 16 bytes, 44 words
+  return self
+end
+
+function AES128Cipher:encrypt(plain)
+  local data = pkcs7_pad(plain)
+  local out={}
+  for i=1,#data,16 do
+    out[#out+1]= cipher_block_128(data:sub(i,i+15), self._w)
+  end
+  return encode_b64(table.concat(out))
+end
+
+function AES128Cipher:decrypt(token)
+  local raw = decode_b64(token)
+  if (#raw%16)~=0 then return nil,"bad ciphertext len" end
+  local out={}
+  for i=1,#raw,16 do
+    out[#out+1]= inv_cipher_block_128(raw:sub(i,i+15), self._w)
+  end
+  return pkcs7_unpad(table.concat(out))
+end
+
+-- Export helpers
+AES128Cipher.pkcs7_pad = pkcs7_pad
+AES128Cipher.pkcs7_unpad = pkcs7_unpad
+
+------------------------------------------------------------------------
+-- Return both AES-256 and AES-128 classes
+------------------------------------------------------------------------
+return {
+  AES256 = AESCipher,
+  AES128 = AES128Cipher,
+  new = AESCipher.new,        -- legacy: default to AES-256
+  new_256 = AESCipher.new,
+  new_128 = AES128Cipher.new,
+  pkcs7_pad = pkcs7_pad,
+  pkcs7_unpad = pkcs7_unpad,
+}
